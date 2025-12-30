@@ -4,7 +4,7 @@
 
 Extension that automatically completes multiple Discord quests spoofing. No more manually watching videos or playing games - just click a button and let it run all quests at once.
 
-Original Source from [**aamiaa**](https://gist.github.com/aamiaa/204cd9d42013ded9faf646fae7f89fbb) & [Syncord](https://github.com/syncordyt) 🌸
+Original Source from [**aamiaa**](https://gist.github.com/aamiaa/204cd9d42013ded9faf646fae7f89fbb) & [**Syncord**](https://github.com/syncordyt) 🌸
 
 
 > [!NOTE]
