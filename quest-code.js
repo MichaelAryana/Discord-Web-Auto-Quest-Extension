@@ -1,294 +1,393 @@
 (function() {
   'use strict';
 
-  function waitForWebpack(callback, maxAttempts = 100, attempt = 0) {
-    if (attempt >= maxAttempts) {
-      console.error('Failed to load webpack after', maxAttempts, 'attempts');
-      return;
-    }
+  function waitForWebpack(callback) {
+    const checkInterval = 100;
+    const maxAttempts = 100;
+    let attempts = 0;
 
-    if (typeof window.webpackChunkdiscord_app === 'undefined') {
-      setTimeout(() => waitForWebpack(callback, maxAttempts, attempt + 1), 100);
-      return;
-    }
-
-    let wpRequire;
-    try {
-      delete window.$;
-      wpRequire = window.webpackChunkdiscord_app.push([[Symbol()], {}, r => r]);
-      window.webpackChunkdiscord_app.pop();
-      
-      if (!wpRequire || !wpRequire.c || Object.keys(wpRequire.c).length === 0) {
-        setTimeout(() => waitForWebpack(callback, maxAttempts, attempt + 1), 100);
+    const check = () => {
+      if (attempts >= maxAttempts) {
+        console.error('Discord Quest Helper: Failed to load webpack after multiple attempts.');
         return;
       }
-      
-      const moduleCount = Object.keys(wpRequire.c).length;
-      if (moduleCount < 10) {
-        setTimeout(() => waitForWebpack(callback, maxAttempts, attempt + 1), 100);
+
+      if (typeof window.webpackChunkdiscord_app === 'undefined') {
+        attempts++;
+        setTimeout(check, checkInterval);
         return;
       }
-      
-      console.log(`Webpack loaded with ${moduleCount} modules`);
-    } catch (error) {
-      console.error('Error accessing webpack:', error);
-      setTimeout(() => waitForWebpack(callback, maxAttempts, attempt + 1), 100);
-      return;
-    }
 
-    callback(wpRequire);
+      try {
+        const originalJQuery = window.$;
+        delete window.$;
+
+        const webpackRequire = window.webpackChunkdiscord_app.push([[Symbol()], {}, (require) => require]);
+        window.webpackChunkdiscord_app.pop();
+
+        if (originalJQuery) window.$ = originalJQuery;
+
+        if (!webpackRequire || !webpackRequire.c || Object.keys(webpackRequire.c).length < 10) {
+          attempts++;
+          setTimeout(check, checkInterval);
+          return;
+        }
+
+        console.debug(`Discord Quest Helper: Webpack loaded with ${Object.keys(webpackRequire.c).length} modules.`);
+        callback(webpackRequire);
+
+      } catch (error) {
+        console.error('Discord Quest Helper: Error accessing webpack:', error);
+        attempts++;
+        setTimeout(check, checkInterval);
+      }
+    };
+
+    check();
   }
 
-  function runQuestCode(wpRequire) {
-    (async () => {
-      try {
-        const userAgent = navigator.userAgent;
-        console.log('Current User-Agent:', userAgent);
-        const hasElectron = userAgent.includes("Electron/");
-        if (!hasElectron) {
-          console.warn('User-Agent does not contain "Electron/". Some quest types may not work.');
-        } else {
-          console.log('User-Agent override is working (contains Electron/)');
-        }
-
-        let ApplicationStreamingStore, RunningGameStore, QuestsStore, ChannelStore, GuildChannelStore, FluxDispatcher, api;
-
-        try {
-          console.log('Loading Discord stores...');
-          
-          ApplicationStreamingStore = Object.values(wpRequire.c).find(x => x?.exports?.Z?.__proto__?.getStreamerActiveStreamMetadata)?.exports?.Z;
-          if (!ApplicationStreamingStore) throw new Error('Could not find ApplicationStreamingStore');
-          
-          RunningGameStore = Object.values(wpRequire.c).find(x => x?.exports?.ZP?.getRunningGames)?.exports?.ZP;
-          if (!RunningGameStore) throw new Error('Could not find RunningGameStore');
-          
-          QuestsStore = Object.values(wpRequire.c).find(x => x?.exports?.Z?.__proto__?.getQuest)?.exports?.Z;
-          if (!QuestsStore) throw new Error('Could not find QuestsStore');
-          
-          ChannelStore = Object.values(wpRequire.c).find(x => x?.exports?.Z?.__proto__?.getAllThreadsForParent)?.exports?.Z;
-          if (!ChannelStore) throw new Error('Could not find ChannelStore');
-          
-          GuildChannelStore = Object.values(wpRequire.c).find(x => x?.exports?.ZP?.getSFWDefaultChannel)?.exports?.ZP;
-          if (!GuildChannelStore) throw new Error('Could not find GuildChannelStore');
-          
-          FluxDispatcher = Object.values(wpRequire.c).find(x => x?.exports?.Z?.__proto__?.flushWaitQueue)?.exports?.Z;
-          if (!FluxDispatcher) throw new Error('Could not find FluxDispatcher');
-          
-          api = Object.values(wpRequire.c).find(x => x?.exports?.tn?.get)?.exports?.tn;
-          if (!api) throw new Error('Could not find API');
-          
-          console.log('All Discord stores loaded successfully');
-        } catch (error) {
-          console.error('Error loading Discord stores:', error);
-          console.log('Please wait for Discord to fully load and try again.');
-          return;
-        }
-
-        if (!QuestsStore || !QuestsStore.quests || QuestsStore.quests.size === 0) {
-          console.log('No quests found. Please accept a quest first!');
-          return;
-        }
-
-        let quests = [...QuestsStore.quests.values()].filter(x => 
-          x.id !== "1412491570820812933" && 
-          x.userStatus?.enrolledAt && 
-          !x.userStatus?.completedAt && 
-          new Date(x.config.expiresAt).getTime() > Date.now()
-        );
-
-        const isApp = typeof window.DiscordNative !== "undefined";
-        
-        if (!isApp) {
-          console.warn('Not running in Discord desktop app. Some quest types may not work.');
-        }
-        
-        if (quests.length === 0) {
-          console.log("You don't have any uncompleted quests!");
-          return;
-        }
-
-        console.log(`Found ${quests.length} active quest(s). Starting multi-quest execution...`);
-
-        const questPromises = quests.map(async (quest) => {
-          const pid = Math.floor(Math.random() * 30000) + 1000 + Math.floor(Math.random() * 1000);
-          
-          const applicationId = quest.config.application.id;
-          const applicationName = quest.config.application.name;
-          const questName = quest.config.messages.questName;
-          const taskConfig = quest.config.taskConfig ?? quest.config.taskConfigV2;
-          const taskName = ["WATCH_VIDEO", "PLAY_ON_DESKTOP", "STREAM_ON_DESKTOP", "PLAY_ACTIVITY", "WATCH_VIDEO_ON_MOBILE"].find(x => taskConfig.tasks[x] != null);
-          const secondsNeeded = taskConfig.tasks[taskName].target;
-          let secondsDone = quest.userStatus?.progress?.[taskName]?.value ?? 0;
-
-          console.log(`Starting quest: ${questName} (${taskName})`);
-
-          if (taskName === "WATCH_VIDEO" || taskName === "WATCH_VIDEO_ON_MOBILE") {
-            const maxFuture = 10, speed = 7, interval = 1;
-            const enrolledAt = new Date(quest.userStatus.enrolledAt).getTime();
-            let completed = false;
-            while (true) {
-              const maxAllowed = Math.floor((Date.now() - enrolledAt) / 1000) + maxFuture;
-              const diff = maxAllowed - secondsDone;
-              const timestamp = secondsDone + speed;
-              if (diff >= speed) {
-                const res = await api.post({url: `/quests/${quest.id}/video-progress`, body: {timestamp: Math.min(secondsNeeded, timestamp + Math.random())}});
-                completed = res.body.completed_at != null;
-                secondsDone = Math.min(secondsNeeded, timestamp);
-              }
-              
-              if (timestamp >= secondsNeeded) {
-                break;
-              }
-              await new Promise(resolve => setTimeout(resolve, interval * 1000));
-            }
-            if (!completed) {
-              await api.post({url: `/quests/${quest.id}/video-progress`, body: {timestamp: secondsNeeded}});
-            }
-            console.log(`Quest completed: ${questName}`);
-          } else if (taskName === "PLAY_ON_DESKTOP") {
-            console.log(`Attempting to complete ${questName} quest (PLAY_ON_DESKTOP)...`);
-            if (!isApp) {
-              console.warn('Running in browser mode. Using heartbeat method instead of spoofing.');
-              const streamKey = `call:${quest.id}:1`;
-              
-              while (true) {
-                const res = await api.post({url: `/quests/${quest.id}/heartbeat`, body: {stream_key: streamKey, terminal: false}});
-                const progress = res.body.progress.PLAY_ON_DESKTOP.value;
-                console.log(`Quest progress (${questName}): ${progress}/${secondsNeeded}`);
-                
-                await new Promise(resolve => setTimeout(resolve, 20 * 1000));
-                
-                if (progress >= secondsNeeded) {
-                  await api.post({url: `/quests/${quest.id}/heartbeat`, body: {stream_key: streamKey, terminal: true}});
-                  break;
-                }
-              }
-              
-              console.log(`Quest completed: ${questName}`);
-              return;
-            }
-            
-            const appData = await api.get({url: `/applications/public?application_ids=${applicationId}`}).then(res => res.body[0]);
-            const exeName = appData.executables.find(x => x.os === "win32").name.replace(">","");
-            
-            const fakeGame = {
-              cmdLine: `C:\\Program Files\\${appData.name}\\${exeName}`,
-              exeName,
-              exePath: `c:/program files/${appData.name.toLowerCase()}/${exeName}`,
-              hidden: false,
-              isLauncher: false,
-              id: applicationId,
-              name: appData.name,
-              pid: pid,
-              pidPath: [pid],
-              processName: appData.name,
-              start: Date.now(),
-            };
-            const realGames = RunningGameStore.getRunningGames();
-            const fakeGames = [fakeGame];
-            const realGetRunningGames = RunningGameStore.getRunningGames;
-            const realGetGameForPID = RunningGameStore.getGameForPID;
-            RunningGameStore.getRunningGames = () => fakeGames;
-            RunningGameStore.getGameForPID = (pid) => fakeGames.find(x => x.pid === pid);
-            FluxDispatcher.dispatch({type: "RUNNING_GAMES_CHANGE", removed: realGames, added: [fakeGame], games: fakeGames});
-            
-            return new Promise((resolve) => {
-              let fn = data => {
-                let progress = quest.config.configVersion === 1 ? data.userStatus.streamProgressSeconds : Math.floor(data.userStatus.progress.PLAY_ON_DESKTOP.value);
-                console.log(`Quest progress (${questName}): ${progress}/${secondsNeeded}`);
-                
-                if (progress >= secondsNeeded) {
-                  console.log(`Quest completed: ${questName}`);
-                  
-                  RunningGameStore.getRunningGames = realGetRunningGames;
-                  RunningGameStore.getGameForPID = realGetGameForPID;
-                  FluxDispatcher.dispatch({type: "RUNNING_GAMES_CHANGE", removed: [fakeGame], added: [], games: []});
-                  FluxDispatcher.unsubscribe("QUESTS_SEND_HEARTBEAT_SUCCESS", fn);
-                  resolve();
-                }
-              };
-              FluxDispatcher.subscribe("QUESTS_SEND_HEARTBEAT_SUCCESS", fn);
-              
-              console.log(`Spoofed your game for ${questName}. Wait for ${Math.ceil((secondsNeeded - secondsDone) / 60)} more minutes.`);
-            });
-          } else if (taskName === "STREAM_ON_DESKTOP") {
-            console.log(`Attempting to complete ${questName} quest (STREAM_ON_DESKTOP)...`);
-            if (!isApp) {
-              console.warn('Running in browser mode. Using heartbeat method instead of spoofing.');
-              const streamKey = `call:${quest.id}:1`;
-              
-              while (true) {
-                const res = await api.post({url: `/quests/${quest.id}/heartbeat`, body: {stream_key: streamKey, terminal: false}});
-                const progress = res.body.progress.STREAM_ON_DESKTOP.value;
-                console.log(`Quest progress (${questName}): ${progress}/${secondsNeeded}`);
-                
-                await new Promise(resolve => setTimeout(resolve, 20 * 1000));
-                
-                if (progress >= secondsNeeded) {
-                  await api.post({url: `/quests/${quest.id}/heartbeat`, body: {stream_key: streamKey, terminal: true}});
-                  break;
-                }
-              }
-              
-              console.log(`Quest completed: ${questName}`);
-              return;
-            }
-            
-            let realFunc = ApplicationStreamingStore.getStreamerActiveStreamMetadata;
-              ApplicationStreamingStore.getStreamerActiveStreamMetadata = () => ({
-                id: applicationId,
-                pid,
-                sourceName: null
-              });
-              
-              return new Promise((resolve) => {
-                let fn = data => {
-                  let progress = quest.config.configVersion === 1 ? data.userStatus.streamProgressSeconds : Math.floor(data.userStatus.progress.STREAM_ON_DESKTOP.value);
-                  console.log(`Quest progress (${questName}): ${progress}/${secondsNeeded}`);
-                  
-                  if (progress >= secondsNeeded) {
-                    console.log(`Quest completed: ${questName}`);
-                    
-                    ApplicationStreamingStore.getStreamerActiveStreamMetadata = realFunc;
-                    FluxDispatcher.unsubscribe("QUESTS_SEND_HEARTBEAT_SUCCESS", fn);
-                    resolve();
-                  }
-                };
-                FluxDispatcher.subscribe("QUESTS_SEND_HEARTBEAT_SUCCESS", fn);
-                
-                console.log(`Spoofed your stream for ${questName}. Stream any window in vc for ${Math.ceil((secondsNeeded - secondsDone) / 60)} more minutes.`);
-                console.log("Remember that you need at least 1 other person to be in the vc!");
-              });
-          } else if (taskName === "PLAY_ACTIVITY") {
-            console.log(`Attempting to complete ${questName} quest (PLAY_ACTIVITY)...`);
-            
-            const channelId = ChannelStore.getSortedPrivateChannels()[0]?.id ?? Object.values(GuildChannelStore.getAllGuilds()).find(x => x != null && x.VOCAL.length > 0).VOCAL[0].channel.id;
-            const streamKey = `call:${channelId}:1`;
-            
-            while (true) {
-              const res = await api.post({url: `/quests/${quest.id}/heartbeat`, body: {stream_key: streamKey, terminal: false}});
-              const progress = res.body.progress.PLAY_ACTIVITY.value;
-              console.log(`Quest progress (${questName}): ${progress}/${secondsNeeded}`);
-              
-              await new Promise(resolve => setTimeout(resolve, 20 * 1000));
-              
-              if (progress >= secondsNeeded) {
-                await api.post({url: `/quests/${quest.id}/heartbeat`, body: {stream_key: streamKey, terminal: true}});
-                break;
-              }
-            }
-            
-            console.log(`Quest completed: ${questName}`);
-          }
-        });
-
-        await Promise.all(questPromises);
-        console.log("All quests completed!");
-      } catch (error) {
-        console.error('Error running quest code:', error);
+  function findModule(webpackRequire, filter) {
+    const modules = Object.values(webpackRequire.c);
+    for (const module of modules) {
+      if (module && module.exports) {
+        if (module.exports.Z && filter(module.exports.Z)) return module.exports.Z;
+        if (module.exports.ZP && filter(module.exports.ZP)) return module.exports.ZP;
+        if (filter(module.exports)) return module.exports;
       }
-    })();
+    }
+    return null;
+  }
+
+  async function runQuestCode(webpackRequire) {
+    try {
+      console.info('Discord Quest Helper: Initializing...');
+
+      const userAgent = navigator.userAgent;
+      if (userAgent.includes("Electron/")) {
+        console.debug('Discord Quest Helper: User-Agent override is active (Electron detected).');
+      } else {
+        console.warn('Discord Quest Helper: User-Agent does not contain "Electron/". Some quests might fail.');
+      }
+
+      const stores = loadStores(webpackRequire);
+      if (!stores) return;
+
+      const { QuestsStore, api } = stores;
+
+      if (!QuestsStore.quests || QuestsStore.quests.size === 0) {
+        console.log('Discord Quest Helper: No quests found. Please accept a quest first!');
+        return;
+      }
+
+      const activeQuests = [...QuestsStore.quests.values()].filter(quest => {
+        const isExpired = new Date(quest.config.expiresAt).getTime() <= Date.now();
+        const isCompleted = !!quest.userStatus?.completedAt;
+        const isEnrolled = !!quest.userStatus?.enrolledAt;
+        return isEnrolled && !isCompleted && !isExpired;
+      });
+
+      if (activeQuests.length === 0) {
+        console.info("Discord Quest Helper: You don't have any uncompleted active quests!");
+        return;
+      }
+
+      console.info(`Discord Quest Helper: Found ${activeQuests.length} active quest(s).`);
+
+      const isDesktopApp = typeof window.DiscordNative !== "undefined";
+      if (!isDesktopApp) {
+        console.info('Discord Quest Helper: Spoofing Desktop Client via Heartbeat Simulation.');
+      }
+
+      await Promise.all(activeQuests.map(quest => processQuest(quest, stores, isDesktopApp)));
+
+      console.info("Discord Quest Helper: All quests processing finished!");
+
+    } catch (error) {
+      console.error('Discord Quest Helper: Critical error:', error);
+    }
+  }
+
+  function loadStores(webpackRequire) {
+    try {
+      const ApplicationStreamingStore = findModule(webpackRequire, m => m.__proto__?.getStreamerActiveStreamMetadata);
+      const RunningGameStore = findModule(webpackRequire, m => m.getRunningGames);
+      const QuestsStore = findModule(webpackRequire, m => m.__proto__?.getQuest);
+      const ChannelStore = findModule(webpackRequire, m => m.__proto__?.getAllThreadsForParent);
+      const GuildChannelStore = findModule(webpackRequire, m => m.getSFWDefaultChannel);
+      const FluxDispatcher = findModule(webpackRequire, m => m.__proto__?.flushWaitQueue);
+      const api = findModule(webpackRequire, m => m.tn?.get)?.tn;
+
+      if (!ApplicationStreamingStore || !RunningGameStore || !QuestsStore || !ChannelStore || !GuildChannelStore || !FluxDispatcher || !api) {
+        const missing = [];
+        if (!ApplicationStreamingStore) missing.push('ApplicationStreamingStore');
+        if (!RunningGameStore) missing.push('RunningGameStore');
+        if (!QuestsStore) missing.push('QuestsStore');
+        if (!ChannelStore) missing.push('ChannelStore');
+        if (!GuildChannelStore) missing.push('GuildChannelStore');
+        if (!FluxDispatcher) missing.push('FluxDispatcher');
+        if (!api) missing.push('API');
+        throw new Error(`Could not find stores: ${missing.join(', ')}`);
+      }
+
+      return { ApplicationStreamingStore, RunningGameStore, QuestsStore, ChannelStore, GuildChannelStore, FluxDispatcher, api };
+    } catch (error) {
+      console.error('Discord Quest Helper: Error loading stores:', error);
+      return null;
+    }
+  }
+
+  async function processQuest(quest, stores, isDesktopApp) {
+    const { api } = stores;
+    const questName = quest.config.messages.questName;
+    const taskConfig = quest.config.taskConfig ?? quest.config.taskConfigV2;
+    
+    const taskType = ["WATCH_VIDEO", "PLAY_ON_DESKTOP", "STREAM_ON_DESKTOP", "PLAY_ACTIVITY", "WATCH_VIDEO_ON_MOBILE"]
+      .find(type => taskConfig.tasks[type] != null);
+
+    if (!taskType) {
+      console.warn(`Discord Quest Helper: Unknown task type for quest "${questName}"`);
+      return;
+    }
+
+    const taskData = taskConfig.tasks[taskType];
+    const secondsNeeded = taskData.target;
+    const currentProgress = quest.userStatus?.progress?.[taskType]?.value ?? 0;
+
+    console.info(`Discord Quest Helper: Starting "${questName}" (${taskType}) - Progress: ${currentProgress}/${secondsNeeded}s`);
+
+    if (currentProgress >= secondsNeeded) {
+      console.info(`Discord Quest Helper: Quest "${questName}" is already complete.`);
+      return;
+    }
+
+    try {
+      switch (taskType) {
+        case "WATCH_VIDEO":
+        case "WATCH_VIDEO_ON_MOBILE":
+          await handleWatchVideo(quest, api, secondsNeeded, currentProgress);
+          break;
+        case "PLAY_ON_DESKTOP":
+          await handlePlayOnDesktop(quest, stores, isDesktopApp, secondsNeeded, currentProgress);
+          break;
+        case "STREAM_ON_DESKTOP":
+          await handleStreamOnDesktop(quest, stores, isDesktopApp, secondsNeeded, currentProgress);
+          break;
+        case "PLAY_ACTIVITY":
+          await handlePlayActivity(quest, stores, secondsNeeded);
+          break;
+        default:
+          console.warn(`Discord Quest Helper: Unhandled task type ${taskType}`);
+      }
+    } catch (error) {
+      console.error(`Discord Quest Helper: Error processing "${questName}":`, error);
+    }
+  }
+
+  async function handleWatchVideo(quest, api, secondsNeeded, initialProgress) {
+    const questName = quest.config.messages.questName;
+    let secondsDone = initialProgress;
+    const speed = 30;
+    const interval = 5;
+
+    console.info(`Discord Quest Helper: Watching video for "${questName}"...`);
+
+    while (secondsDone < secondsNeeded) {
+      secondsDone = Math.min(secondsNeeded, secondsDone + speed);
+      
+      await new Promise(resolve => setTimeout(resolve, interval * 1000));
+
+      const response = await api.post({
+        url: `/quests/${quest.id}/video-progress`,
+        body: { timestamp: secondsDone }
+      });
+
+      if (response.body.completed_at) {
+        console.info(`Discord Quest Helper: Quest "${questName}" completed!`);
+        return;
+      }
+      
+      console.debug(`Discord Quest Helper: "${questName}" progress: ${secondsDone}/${secondsNeeded}s`);
+    }
+  }
+
+  async function handlePlayOnDesktop(quest, stores, isDesktopApp, secondsNeeded, initialProgress) {
+    const { RunningGameStore, FluxDispatcher, api } = stores;
+    const questName = quest.config.messages.questName;
+    const applicationId = quest.config.application.id;
+
+    if (!isDesktopApp) {
+      await simulateHeartbeat(quest, api, "PLAY_ON_DESKTOP", secondsNeeded);
+      return;
+    }
+
+    console.info(`Discord Quest Helper: Spoofing game for "${questName}"...`);
+    
+    const pid = Math.floor(Math.random() * 10000) * 4 + 1000;
+    
+    let appName = quest.config.application.name;
+    let exeName = "game.exe";
+    
+    try {
+      const appData = await api.get({url: `/applications/public?application_ids=${applicationId}`});
+      if (appData.body && appData.body[0]) {
+        const app = appData.body[0];
+        appName = app.name;
+        const winExe = app.executables?.find(x => x.os === "win32");
+        if (winExe) exeName = winExe.name.replace(">", "");
+      }
+    } catch (e) {
+      console.warn('Discord Quest Helper: Could not fetch app details, using defaults.');
+    }
+
+    const fakeGame = {
+      cmdLine: `C:\\Program Files\\${appName}\\${exeName}`,
+      exeName: exeName,
+      exePath: `c:/program files/${appName.toLowerCase()}/${exeName}`,
+      hidden: false,
+      isLauncher: false,
+      id: applicationId,
+      name: appName,
+      pid: pid,
+      pidPath: [pid],
+      processName: appName,
+      start: Date.now(),
+    };
+
+    const originalGetRunningGames = RunningGameStore.getRunningGames;
+    const originalGetGameForPID = RunningGameStore.getGameForPID;
+    
+    RunningGameStore.getRunningGames = () => [fakeGame];
+    RunningGameStore.getGameForPID = (id) => (id === pid ? fakeGame : null);
+    
+    FluxDispatcher.dispatch({
+      type: "RUNNING_GAMES_CHANGE",
+      removed: [],
+      added: [fakeGame],
+      games: [fakeGame]
+    });
+
+    await waitForCompletion(stores, quest, "PLAY_ON_DESKTOP", secondsNeeded);
+
+    RunningGameStore.getRunningGames = originalGetRunningGames;
+    RunningGameStore.getGameForPID = originalGetGameForPID;
+    FluxDispatcher.dispatch({
+      type: "RUNNING_GAMES_CHANGE",
+      removed: [fakeGame],
+      added: [],
+      games: []
+    });
+  }
+
+  async function handleStreamOnDesktop(quest, stores, isDesktopApp, secondsNeeded, initialProgress) {
+    const { ApplicationStreamingStore, FluxDispatcher, api } = stores;
+    const questName = quest.config.messages.questName;
+    const applicationId = quest.config.application.id;
+
+    if (!isDesktopApp) {
+      await simulateHeartbeat(quest, api, "STREAM_ON_DESKTOP", secondsNeeded);
+      return;
+    }
+
+    console.info(`Discord Quest Helper: Spoofing stream for "${questName}"...`);
+    console.warn("Discord Quest Helper: NOTE: You must be in a voice channel with at least one other person!");
+
+    const pid = Math.floor(Math.random() * 10000) * 4 + 1000;
+    
+    const originalGetStreamerActiveStreamMetadata = ApplicationStreamingStore.getStreamerActiveStreamMetadata;
+    
+    ApplicationStreamingStore.getStreamerActiveStreamMetadata = () => ({
+      id: applicationId,
+      pid: pid,
+      sourceName: null
+    });
+
+    await waitForCompletion(stores, quest, "STREAM_ON_DESKTOP", secondsNeeded);
+
+    ApplicationStreamingStore.getStreamerActiveStreamMetadata = originalGetStreamerActiveStreamMetadata;
+  }
+
+  async function handlePlayActivity(quest, stores, secondsNeeded) {
+    const { ChannelStore, GuildChannelStore, api } = stores;
+    const questName = quest.config.messages.questName;
+
+    console.info(`Discord Quest Helper: Simulating activity for "${questName}"...`);
+
+    const privateChannels = ChannelStore.getSortedPrivateChannels();
+    let channelId = privateChannels[0]?.id;
+
+    if (!channelId) {
+      const guilds = Object.values(GuildChannelStore.getAllGuilds());
+      const guildWithVoice = guilds.find(g => g && g.VOCAL && g.VOCAL.length > 0);
+      if (guildWithVoice) {
+        channelId = guildWithVoice.VOCAL[0].channel.id;
+      }
+    }
+
+    if (!channelId) {
+      console.error('Discord Quest Helper: Could not find a voice channel to simulate activity in.');
+      return;
+    }
+
+    const streamKey = `call:${channelId}:1`;
+    await runHeartbeatLoop(quest, api, streamKey, "PLAY_ACTIVITY", secondsNeeded);
+  }
+
+  async function simulateHeartbeat(quest, api, taskName, secondsNeeded) {
+    const streamKey = `call:${quest.id}:1`;
+    await runHeartbeatLoop(quest, api, streamKey, taskName, secondsNeeded);
+  }
+
+  async function runHeartbeatLoop(quest, api, streamKey, taskName, secondsNeeded) {
+    const questName = quest.config.messages.questName;
+    
+    while (true) {
+      const response = await api.post({
+        url: `/quests/${quest.id}/heartbeat`,
+        body: { stream_key: streamKey, terminal: false }
+      });
+
+      const progress = response.body.progress[taskName]?.value ?? 0;
+      console.debug(`Discord Quest Helper: "${questName}" progress: ${progress}/${secondsNeeded}s`);
+
+      if (progress >= secondsNeeded) {
+        await api.post({
+          url: `/quests/${quest.id}/heartbeat`,
+          body: { stream_key: streamKey, terminal: true }
+        });
+        console.info(`Discord Quest Helper: Quest "${questName}" completed!`);
+        break;
+      }
+
+      await new Promise(resolve => setTimeout(resolve, 20 * 1000));
+    }
+  }
+
+  function waitForCompletion(stores, quest, taskName, secondsNeeded) {
+    return new Promise((resolve) => {
+      const { FluxDispatcher } = stores;
+      const questName = quest.config.messages.questName;
+
+      const progressHandler = (data) => {
+        let progress = 0;
+        if (data.userStatus?.progress?.[taskName]) {
+          progress = Math.floor(data.userStatus.progress[taskName].value);
+        } else if (data.userStatus?.streamProgressSeconds) {
+          progress = data.userStatus.streamProgressSeconds;
+        }
+
+        console.debug(`Discord Quest Helper: "${questName}" progress: ${progress}/${secondsNeeded}s`);
+
+        if (progress >= secondsNeeded) {
+          console.info(`Discord Quest Helper: Quest "${questName}" completed!`);
+          FluxDispatcher.unsubscribe("QUESTS_SEND_HEARTBEAT_SUCCESS", progressHandler);
+          resolve();
+        }
+      };
+
+      FluxDispatcher.subscribe("QUESTS_SEND_HEARTBEAT_SUCCESS", progressHandler);
+    });
   }
 
   waitForWebpack(runQuestCode);
+
 })();

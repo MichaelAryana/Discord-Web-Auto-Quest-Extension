@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Discord Web Quest Completer",
-  "version": "1.0.0",
+  "version": "1.0.2",
   "description": "Complete Multi Discord Quests in the browser in one click without any manual work",
   "icons": {
     "16": "assets/icon.png",
@@ -27,9 +27,9 @@
     },
     {
       "matches": ["https://discord.com/*"],
-      "js": ["user-agent-check.js"],
+      "js": ["user-agent-override.js"],
       "run_at": "document_start",
-      "all_frames": false
+      "world": "MAIN"
     }
   ],
   "declarative_net_request": {
