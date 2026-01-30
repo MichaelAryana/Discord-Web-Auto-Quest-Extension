@@ -208,7 +208,7 @@
 
     const credit = document.createElement('p');
     credit.style.cssText = 'margin: 0; font-size: 14px; color: #ccc;';
-    credit.innerHTML = 'Credits by <a href="https://github.com/nvckai/Discord-Web-Multi-Quest-Completer" target="_blank" style="color: #fff; font-weight: bold; text-decoration: none;">6Together9</a>';
+    credit.innerHTML = 'Credits by <a href="https://github.com/nvckai/Discord-Web-Auto-Quest-Extension" target="_blank" style="color: #fff; font-weight: bold; text-decoration: none;">6Together9</a>';
     panel.appendChild(credit);
 
     document.body.appendChild(panel);
