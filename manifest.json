@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "Discord Web Quest Completer",
-  "version": "1.2.2",
-  "description": "Complete Multi Discord Quests in the browser in one click without any manual work",
+  "name": "Discord Web Auto Quest Extension",
+  "version": "1.2.3",
+  "description": "Automatically complete Discord quests in the browser sequentially without any manual work",
   "icons": {
     "16": "assets/icon.png",
     "48": "assets/icon.png",
@@ -21,7 +21,7 @@
   },
   "content_scripts": [
     {
-      "matches": ["https://discord.com/quest-home*"],
+      "matches": ["https://discord.com/*"],
       "js": ["quest-home.js"],
       "run_at": "document_idle"
     },

@@ -97,57 +97,32 @@
         completed: state.completed
       })));
 
-      const videoStates = questStates.filter(s => s.taskType.startsWith("WATCH_VIDEO"));
-      const heartbeatStates = questStates.filter(s => !s.taskType.startsWith("WATCH_VIDEO"));
+      for (const state of questStates) {
+        if (state.completed) {continue;}
 
-      const heartbeatInterval = 30000;
-      const videoInterval = 1000;
+        console.info(`Discord Auto Quest: Starting quest "${state.questName}"...`);
+        
+        while (!state.completed) {
+           const isVideo = state.taskType.startsWith("WATCH_VIDEO");
 
-      const videoPromise = (async () => {
-        let videoRunning = true;
-        while (videoRunning && videoStates.length > 0) {
-          let allVideoComplete = true;
-          const now = Date.now();
-          for (const state of videoStates) {
-            if (state.completed) {continue;}
-            allVideoComplete = false;
-            
-            if (now - state.lastUpdate >= videoInterval) {
-               await processVideoStep(state, stores.api);
-               state.lastUpdate = now;
-            }
-          }
-          if (allVideoComplete) {videoRunning = false;}
-          await new Promise(r => setTimeout(r, 1000));
-        }
-      })();
-
-      const heartbeatPromise = (async () => {
-         let heartbeatRunning = true;
-         while (heartbeatRunning && heartbeatStates.length > 0) {
-           let anyProcessed = false;
-           let allHeartbeatComplete = true;
-
-           for (const state of heartbeatStates) {
-             if (state.completed) {continue;}
-             allHeartbeatComplete = false;
-             anyProcessed = true;
-
+           if (isVideo) {
+             await processVideoStep(state, stores.api);
+             if (!state.completed) {
+               await new Promise(r => setTimeout(r, 1000));
+             }
+           } else {
              await processHeartbeatStep(state, stores);
              
-             if (state.completed) {continue;}
-             
-             console.info(`Discord Auto Quest: Waiting ${heartbeatInterval / 1000}s to next heartbeat...`);
-             await new Promise(r => setTimeout(r, heartbeatInterval));
+             if (!state.completed) {
+                console.info(`Discord Auto Quest: Waiting 30s to next heartbeat...`);
+                await new Promise(r => setTimeout(r, 30000));
+             }
            }
+        }
 
-           if (allHeartbeatComplete) {heartbeatRunning = false;}
-           
-           if (!anyProcessed) {break;}
-         }
-      })();
+        console.info(`Discord Auto Quest: Finished quest "${state.questName}".`);
+      }
 
-      await Promise.all([videoPromise, heartbeatPromise]);
       console.info("Discord Auto Quest: All quests processing finished!");
 
     } catch (error) {
@@ -184,37 +159,28 @@
       secondsNeeded,
       currentProgress,
       completed: currentProgress >= secondsNeeded,
-      lastUpdate: 0,
       enrolledAt: new Date(quest.userStatus.enrolledAt).getTime(),
-      appName: quest.config.application.name,
-      appId: quest.config.application.id,
       questName: quest.config.messages.questName
     };
   }
 
   function loadStores(webpackRequire) {
     try {
-      const ApplicationStreamingStore = findModule(webpackRequire, m => m.__proto__?.getStreamerActiveStreamMetadata);
-      const RunningGameStore = findModule(webpackRequire, m => m.getRunningGames);
       const QuestsStore = findModule(webpackRequire, m => m.__proto__?.getQuest);
       const ChannelStore = findModule(webpackRequire, m => m.__proto__?.getAllThreadsForParent);
       const GuildChannelStore = findModule(webpackRequire, m => m.getSFWDefaultChannel);
-      const FluxDispatcher = findModule(webpackRequire, m => m.h?.__proto__?.flushWaitQueue)?.h;
       const api = findModule(webpackRequire, m => m.Bo?.get)?.Bo;
 
-      if (!ApplicationStreamingStore || !RunningGameStore || !QuestsStore || !ChannelStore || !GuildChannelStore || !FluxDispatcher || !api) {
+      if (!QuestsStore || !ChannelStore || !GuildChannelStore || !api) {
         const missing = [];
-        if (!ApplicationStreamingStore) {missing.push('ApplicationStreamingStore');}
-        if (!RunningGameStore) {missing.push('RunningGameStore');}
         if (!QuestsStore) {missing.push('QuestsStore');}
         if (!ChannelStore) {missing.push('ChannelStore');}
         if (!GuildChannelStore) {missing.push('GuildChannelStore');}
-        if (!FluxDispatcher) {missing.push('FluxDispatcher');}
         if (!api) {missing.push('api');}
         throw new Error(`Could not find stores: ${missing.join(', ')}`);
       }
 
-      return { ApplicationStreamingStore, RunningGameStore, QuestsStore, ChannelStore, GuildChannelStore, FluxDispatcher, api };
+      return { QuestsStore, ChannelStore, GuildChannelStore, api };
     } catch (error) {
       console.error('Discord Auto Quest: Error loading stores:', error);
       return null;

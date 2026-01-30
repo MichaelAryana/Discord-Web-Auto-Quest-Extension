@@ -1,8 +1,8 @@
-# Discord Web Multi Quest Completer
+# Discord Web Auto Quest Extension
 
-<img align="right" src="./assets/icon.png" width=200 alt="Discord Quest Completer logo">
+<img align="right" src="./assets/icon.png" width=200 alt="Discord Auto Quest Extension logo">
 
-Extension that automatically completes multiple Discord quests. No more manually watching videos or playing games - just click a button and let it run all quests at once and work for all device.
+Extension that automatically completes Discord quests. No more manually watching videos or playing games - just click a button and let it run quests one by one automatically and work for all device.
 
 Original Source from [**aamiaa**](https://gist.github.com/aamiaa/204cd9d42013ded9faf646fae7f89fbb) & [**Syncord**](https://github.com/syncordyt) 🌸
 
@@ -12,14 +12,14 @@ Original Source from [**aamiaa**](https://gist.github.com/aamiaa/204cd9d42013ded
 
 ## What it does
 
-This extension hooks into Discord's quest system and automatically completes the requirements for all active quests concurrently. It works with:
+This extension hooks into Discord's quest system and automatically completes the requirements for all active quests sequentially. It works with:
 
 - Video watching quests (WATCH_VIDEO, WATCH_VIDEO_ON_MOBILE)
 - Desktop game playing (PLAY_ON_DESKTOP) 
 - Desktop streaming (STREAM_ON_DESKTOP)
 - Activity playing (PLAY_ACTIVITY)
 
-The extension spoofs your user-agent to make Discord think you're using the desktop app, which is required for some quest types to work properly. Supports multi-quest execution for maximum efficiency.
+The extension spoofs your user-agent to make Discord think you're using the desktop app, which is required for some quest types to work properly. Supports sequential quest execution to ensure stability and proper completion.
 
 ## Installation
 
@@ -37,7 +37,7 @@ The extension spoofs your user-agent to make Discord think you're using the desk
 4. Click it and check the browser console (F12) for progress updates
 5. Expand the panel to see quest details (shows Discord ID and credits)
 
-The extension will automatically detect all your active quests and start completing them simultaneously. Progress is logged to the console so you can see what's happening for each quest.
+The extension will automatically detect all your active quests and start completing them one by one. Progress is logged to the console so you can see what's happening for each quest.
 
 ## Requirements
 
