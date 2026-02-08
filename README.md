@@ -93,7 +93,7 @@ Built with Manifest V3. Uses:
    - A "Running Quests" button will appear. Click it and check console for progress updates
    - If it doesn't work, refresh the quest page again
 
-This version supports multi-quest execution on mobile with the same concurrent processing as desktop.
+This version supports quest execution on mobile with the same concurrent processing as desktop.
 
 > [!WARNING]
 > This is a tool for automating Discord quests. Use at your own risk and be aware of Discord's Terms of Service. I'm not responsible if your account gets flagged or banned.
