@@ -7,10 +7,7 @@
     let attempts = 0;
 
     const check = () => {
-      if (attempts >= maxAttempts) {
-        console.error('Discord Auto Quest: Failed to load webpack after multiple attempts.');
-        return;
-      }
+      if (attempts >= maxAttempts) return;
 
       if (typeof window.webpackChunkdiscord_app === 'undefined') {
         attempts++;
@@ -25,7 +22,7 @@
         const webpackRequire = window.webpackChunkdiscord_app.push([[Symbol()], {}, (require) => require]);
         window.webpackChunkdiscord_app.pop();
 
-        if (originalJQuery) {window.$ = originalJQuery;}
+        if (originalJQuery) window.$ = originalJQuery;
 
         if (!webpackRequire || !webpackRequire.c || Object.keys(webpackRequire.c).length < 10) {
           attempts++;
@@ -33,11 +30,8 @@
           return;
         }
 
-        console.info(`Discord Auto Quest: Webpack loaded with ${Object.keys(webpackRequire.c).length} modules.`);
         callback(webpackRequire);
-
       } catch (error) {
-        console.error('Discord Auto Quest: Error accessing webpack:', error);
         attempts++;
         setTimeout(check, checkInterval);
       }
@@ -47,12 +41,13 @@
   }
 
   function findModule(webpackRequire, filter) {
-    const modules = Object.values(webpackRequire.c);
-    for (const module of modules) {
-      if (module && module.exports) {
-        if (module.exports.A && filter(module.exports.A)) {return module.exports.A;}
-        if (module.exports.Ay && filter(module.exports.Ay)) {return module.exports.Ay;}
-        if (filter(module.exports)) {return module.exports;}
+    for (const module of Object.values(webpackRequire.c)) {
+      if (module?.exports) {
+        const exports = module.exports;
+        if (exports.A && filter(exports.A)) return exports.A;
+        if (exports.Ay && filter(exports.Ay)) return exports.Ay;
+        if (exports.ZP && filter(exports.ZP)) return exports.ZP;
+        if (filter(exports)) return exports;
       }
     }
     return null;
@@ -68,34 +63,11 @@
 
   async function runQuestCode(webpackRequire) {
     try {
-      const version = window.__QUEST_VERSION || 'unknown';
-      if ('__QUEST_VERSION' in window) {
-        try {
-          delete window.__QUEST_VERSION;
-        } catch (e) {
-          // ignore if deletion fails
-        }
-      }
-      console.info(`Discord Auto Quest: Initializing... (v${version})`);
-
-      const isDesktopApp = typeof window.DiscordNative !== "undefined";
-      if (!isDesktopApp) {
-        console.info('Discord Auto Quest: Spoofing Desktop Client via Heartbeat Simulation.');
-      }
-      
-      console.info(`Discord Auto Quest: Initialized!`);
-
       const stores = loadStores(webpackRequire);
-      if (!stores) {return;}
+      if (!stores) return;
 
       const activeQuests = getActiveQuests(stores.QuestsStore);
-
-      if (activeQuests.length === 0) {
-        console.info("Discord Auto Quest: You don't have any uncompleted active quests!");
-        return;
-      }
-
-      console.info(`Discord Auto Quest: Found ${activeQuests.length} active quest(s).`);
+      if (activeQuests.length === 0) return;
 
       const questStates = activeQuests.map(quest => initializeQuestState(quest));
 
@@ -108,36 +80,21 @@
       })));
 
       for (const state of questStates) {
-        if (state.completed) {continue;}
+        if (state.completed) continue;
 
-        console.info(`Discord Auto Quest: Starting quest "${state.questName}"...`);
-        
         while (!state.completed) {
-           const isVideo = state.taskType.startsWith("WATCH_VIDEO");
+          const isVideo = state.taskType.startsWith("WATCH_VIDEO");
 
-           if (isVideo) {
-             await processVideoStep(state, stores.api);
-             if (!state.completed) {
-               await new Promise(r => setTimeout(r, 1000));
-             }
-           } else {
-             await processHeartbeatStep(state, stores);
-             
-             if (!state.completed) {
-                console.info(`Discord Auto Quest: Waiting 30s to next heartbeat...`);
-                await new Promise(r => setTimeout(r, 30000));
-             }
-           }
+          if (isVideo) {
+            await processVideoStep(state, stores.api);
+            if (!state.completed) await new Promise(r => setTimeout(r, 1000));
+          } else {
+            await processHeartbeatStep(state, stores);
+            if (!state.completed) await new Promise(r => setTimeout(r, 30000));
+          }
         }
-
-        console.info(`Discord Auto Quest: Finished quest "${state.questName}".`);
       }
-
-      console.info("Discord Auto Quest: All quests processing finished!");
-
-    } catch (error) {
-      console.error('Discord Auto Quest: Critical error:', error);
-    }
+    } catch (error) {}
   }
 
   function getActiveQuests(QuestsStore) {
@@ -157,7 +114,7 @@
   function initializeQuestState(quest) {
     const taskConfig = quest.config.taskConfig ?? quest.config.taskConfigV2;
     const supportedTasks = ["WATCH_VIDEO", "PLAY_ON_DESKTOP", "STREAM_ON_DESKTOP", "PLAY_ACTIVITY", "WATCH_VIDEO_ON_MOBILE"];
-    const taskType = supportedTasks.find(type => taskConfig.tasks[type] !== undefined && taskConfig.tasks[type] !== null);
+    const taskType = supportedTasks.find(type => taskConfig.tasks[type] != null);
     
     const taskData = taskConfig.tasks[taskType];
     const secondsNeeded = taskData?.target ?? 0;
@@ -179,84 +136,56 @@
       const QuestsStore = findModule(webpackRequire, m => m.__proto__?.getQuest);
       const ChannelStore = findModule(webpackRequire, m => m.__proto__?.getAllThreadsForParent);
       const GuildChannelStore = findModule(webpackRequire, m => m.getSFWDefaultChannel);
-      const api = findModule(webpackRequire, m => m.Bo?.get)?.Bo;
+      const api = findModule(webpackRequire, m => m.Bo?.get || m.tn?.get);
 
-      if (!QuestsStore || !ChannelStore || !GuildChannelStore || !api) {
-        const missing = [];
-        if (!QuestsStore) {missing.push('QuestsStore');}
-        if (!ChannelStore) {missing.push('ChannelStore');}
-        if (!GuildChannelStore) {missing.push('GuildChannelStore');}
-        if (!api) {missing.push('api');}
-        throw new Error(`Could not find stores: ${missing.join(', ')}`);
-      }
+      if (!QuestsStore || !api) return null;
 
-      return { QuestsStore, ChannelStore, GuildChannelStore, api };
+      return { QuestsStore, ChannelStore, GuildChannelStore, api: api.Bo || api.tn || api };
     } catch (error) {
-      console.error('Discord Auto Quest: Error loading stores:', error);
       return null;
     }
   }
 
   const notifyUI = (quest, progress, target, completed) => {
-     sendUpdate('QUEST_UPDATE', { id: quest.id, name: quest.config.messages.questName, progress, target, completed });
+    sendUpdate('QUEST_UPDATE', { id: quest.id, name: quest.config.messages.questName, progress, target, completed });
   };
 
   async function processVideoStep(state, api) {
-    const { quest, secondsNeeded, enrolledAt, currentProgress, questName } = state;
-    const maxFuture = 10;
-    const speed = 7; 
+    const { quest, secondsNeeded, enrolledAt, currentProgress } = state;
+    const maxFuture = 10, speed = 7;
     
     const maxAllowed = Math.floor((Date.now() - enrolledAt) / 1000) + maxFuture;
-    const diff = maxAllowed - currentProgress;
-
-    if (diff < speed) {
-       return;
-    }
+    if (maxAllowed - currentProgress < speed) return;
 
     const nextTime = Math.min(secondsNeeded, currentProgress + speed + Math.random());
     
     try {
-        const body = { timestamp: nextTime };
-        const res = await api.post({ url: `/quests/${quest.id}/video-progress`, body });
-        
-        state.currentProgress = nextTime;
-        console.info(`Discord Auto Quest: "${questName}" (Video) progress: ${Math.floor(state.currentProgress)}/${secondsNeeded}s`);
-        notifyUI(quest, Math.floor(state.currentProgress), secondsNeeded, false);
+      const res = await api.post({ url: `/quests/${quest.id}/video-progress`, body: { timestamp: nextTime } });
+      state.currentProgress = nextTime;
+      notifyUI(quest, Math.floor(state.currentProgress), secondsNeeded, false);
 
-        if (res.body.completed_at !== null || state.currentProgress >= secondsNeeded) {
-            state.completed = true;
-            console.info(`Discord Auto Quest: Quest "${questName}" completed!`);
-            notifyUI(quest, secondsNeeded, secondsNeeded, true);
-            
-            try { 
-              await api.post({ url: `/quests/${quest.id}/video-progress`, body: { timestamp: secondsNeeded } }); 
-            } catch (error) {
-              console.error('Discord Auto Quest: Final update failed', error);
-            }
-        }
-    } catch (error) {
-        console.error(`Discord Auto Quest: Error updating video progress for "${questName}":`, error);
-    }
+      if (res.body.completed_at !== null || state.currentProgress >= secondsNeeded) {
+        state.completed = true;
+        notifyUI(quest, secondsNeeded, secondsNeeded, true);
+        await api.post({ url: `/quests/${quest.id}/video-progress`, body: { timestamp: secondsNeeded } });
+      }
+    } catch (error) {}
   }
 
   async function processHeartbeatStep(state, stores) {
     const { api, ChannelStore, GuildChannelStore } = stores;
-    const { quest, taskType, secondsNeeded, questName } = state;
+    const { quest, taskType, secondsNeeded } = state;
 
-    let streamKey = `call:${quest.id}:1`;
-
-    if (taskType === "PLAY_ACTIVITY") {
-       const channelId = getVoiceChannelId(ChannelStore, GuildChannelStore);
-       if (channelId) {
-         streamKey = `call:${channelId}:1`;
-       } else {
-         console.warn(`Discord Auto Quest: No voice channel found for activity quest "${questName}". Skipping step.`);
-         return; 
-       }
+    let channelId = ChannelStore?.getSortedPrivateChannels()[0]?.id;
+    if (!channelId && GuildChannelStore) {
+      const guilds = Object.values(GuildChannelStore.getAllGuilds());
+      const voice = guilds.find(g => g?.VOCAL?.length > 0);
+      if (voice) channelId = voice.VOCAL[0].channel.id;
     }
 
+    const streamKey = channelId ? `call:${channelId}:1` : `call:${quest.id}:1`;
+
     try {
-      console.info(`Discord Auto Quest: Sending heartbeat for "${questName}"...`);
       const response = await api.post({
         url: `/quests/${quest.id}/heartbeat`,
         body: { stream_key: streamKey, terminal: false }
@@ -264,8 +193,6 @@
 
       const serverProgress = response.body?.progress?.[taskType]?.value ?? 0;
       state.currentProgress = serverProgress;
-      
-      console.info(`Discord Auto Quest: "${questName}" progress: ${Math.floor(state.currentProgress)}/${secondsNeeded}s`);
       notifyUI(quest, Math.floor(state.currentProgress), secondsNeeded, state.currentProgress >= secondsNeeded);
 
       if (state.currentProgress >= secondsNeeded) {
@@ -274,28 +201,10 @@
           body: { stream_key: streamKey, terminal: true }
         });
         state.completed = true;
-        console.info(`Discord Auto Quest: Quest "${questName}" completed!`);
         notifyUI(quest, secondsNeeded, secondsNeeded, true);
       }
-    } catch (error) {
-      console.error(`Discord Auto Quest: Error sending heartbeat for "${questName}":`, error);
-    }
-  }
-
-  function getVoiceChannelId(ChannelStore, GuildChannelStore) {
-    const privateChannels = ChannelStore.getSortedPrivateChannels();
-    let channelId = privateChannels[0]?.id;
-
-    if (!channelId) {
-      const guilds = Object.values(GuildChannelStore.getAllGuilds());
-      const guildWithVoice = guilds.find(g => g && g.VOCAL && g.VOCAL.length > 0);
-      if (guildWithVoice) {
-        channelId = guildWithVoice.VOCAL[0].channel.id;
-      }
-    }
-    return channelId;
+    } catch (error) {}
   }
 
   waitForWebpack(runQuestCode);
-
 })();
