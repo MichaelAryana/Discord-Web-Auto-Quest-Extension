@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Discord Web Auto Quest Extension",
-  "version": "1.2.3",
+  "version": "1.2.4",
   "description": "Automatically complete Discord quests in the browser sequentially without any manual work",
   "icons": {
     "16": "assets/icon.png",
