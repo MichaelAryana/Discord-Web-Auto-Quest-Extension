@@ -63,11 +63,20 @@
 
   async function runQuestCode(webpackRequire) {
     try {
+      const version = window.__QUEST_VERSION || 'unknown';
+      if ('__QUEST_VERSION' in window) {
+        try { delete window.__QUEST_VERSION; } catch (e) {}
+      }
+      console.info(`Discord Auto Quest: Initializing... (v${version})`);
+
       const stores = loadStores(webpackRequire);
       if (!stores) return;
 
       const activeQuests = getActiveQuests(stores.QuestsStore);
-      if (activeQuests.length === 0) return;
+      if (activeQuests.length === 0) {
+        console.info("Discord Auto Quest: You don't have any uncompleted active quests!");
+        return;
+      }
 
       const questStates = activeQuests.map(quest => initializeQuestState(quest));
 
